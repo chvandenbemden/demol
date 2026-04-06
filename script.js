@@ -1,18 +1,16 @@
 /* script.js */
-/* Volledige implementatie volgens laatste specificaties:
-   - Afleveringen 3..7 (START_EPISODE = 3, count = 5)
-   - Spelers- en kandidatenoverzicht met kandidaten-tabel (status: Afgevallen in Aflevering X — dd mmm / Nog actief)
-   - Finale dropdown alleen op Overzicht (prominent)
-   - Afvaller dropdown onderaan afleveringspagina
-   - Dropdowns tonen alleen actieve kandidaten
-   - Autosave, append-only opslag, history modal, locks, admin wachtwoord
+/* Aangepast: bij elke start worden oude, invloedrijke keys gereset zodat oude gegevens
+   de UI, afleveringstelling of finale niet meer kunnen beïnvloeden.
+   - Episode count, predictions, eliminations, locks en final worden bij load gereset
+     naar de waarden uit de code (DEFAULT_EPISODE_COUNT, lege arrays, null).
+   - Kandidaten en spelers blijven bewaard zodat je die niet per ongeluk verliest.
 */
 
 const START_EPISODE = 3;
-const START_DATE_ISO = '2026-04-12'; // Aflevering 3 datum
+const START_DATE_ISO = '2026-04-12';
 const DEFAULT_CANDIDATES = ["Abigail","Dries","Isabel","Wout","Maxim","Julie","Yana","Yannis"];
 const DEFAULT_PLAYERS = ["Sam","Camellia","Tim","Joppe","Amber","Wout","Christophe","Tom"];
-const DEFAULT_EPISODE_COUNT = 5; // E3..E7 => 5 afleveringen
+const DEFAULT_EPISODE_COUNT = 5; // E3..E7
 
 // localStorage keys
 const KEY_CANDIDATES = 'mol_candidates';
@@ -30,16 +28,32 @@ function uuidv4(){ return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g
 function lsGet(key, fallback){ try{ return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback)); }catch(e){ return fallback; } }
 function lsSet(key, value){ localStorage.setItem(key, JSON.stringify(value)); }
 
-// init defaults
+// --- CRUCIALE WIJZIGING: reset van invloedrijke opgeslagen data ---
+// Bij elke paginalaad resetten we expliciet de keys die oude data kunnen laten "meespelen".
+// We bewaren kandidaten en spelers zodat die niet verloren gaan.
+function resetTransientStorageToDefaults(){
+  // Forceer episode count naar de gewenste waarde
+  lsSet(KEY_EPISODE_COUNT, DEFAULT_EPISODE_COUNT);
+  // Verwijder of reset voorspellingen/afvallen/locks/final zodat oude data geen invloed heeft
+  lsSet(KEY_PREDICTIONS, []);
+  lsSet(KEY_ELIMINATIONS, []);
+  lsSet(KEY_LOCKS, []);
+  lsSet(KEY_FINAL, null);
+  // NB: we laten KEY_CANDIDATES en KEY_PLAYERS ongemoeid als ze bestaan; anders initialiseren we ze hieronder
+}
+
+// init defaults for candidates/players/admin if missing
 if(!localStorage.getItem(KEY_CANDIDATES)) lsSet(KEY_CANDIDATES, DEFAULT_CANDIDATES);
 if(!localStorage.getItem(KEY_PLAYERS)) lsSet(KEY_PLAYERS, DEFAULT_PLAYERS);
-if(!localStorage.getItem(KEY_EPISODE_COUNT)) lsSet(KEY_EPISODE_COUNT, DEFAULT_EPISODE_COUNT);
-if(!localStorage.getItem(KEY_PREDICTIONS)) lsSet(KEY_PREDICTIONS, []);
-if(!localStorage.getItem(KEY_ELIMINATIONS)) lsSet(KEY_ELIMINATIONS, []);
-if(!localStorage.getItem(KEY_LOCKS)) lsSet(KEY_LOCKS, []);
-if(!localStorage.getItem(KEY_FINAL)) lsSet(KEY_FINAL, null);
+if(!localStorage.getItem(KEY_ADMIN_HASH)) {
+  // set default admin password once if missing
+  (async ()=>{ const h = await hashStringSHA256('christopheisdemol'); lsSet(KEY_ADMIN_HASH, h); })();
+}
 
-// episode date helpers
+// Run reset BEFORE anything else reads those keys
+resetTransientStorageToDefaults();
+
+// --- episode date helpers ---
 function episodeToDateISO(episode){
   const start = new Date(START_DATE_ISO + 'T00:00:00');
   const diff = (episode - START_EPISODE) * 7;
@@ -52,7 +66,7 @@ function formatEpisodeLabel(episode){
   return `Aflevering ${episode} — ${d.toLocaleDateString('nl-BE', { day:'numeric', month:'short' })}`;
 }
 
-// predictions (append-only)
+// --- predictions (append-only) ---
 function savePrediction(episode, player, first, second, third){
   const pred = { id: uuidv4(), episode, player, first: first||'', second: second||'', third: third||'', createdAt: nowISO() };
   const arr = lsGet(KEY_PREDICTIONS, []);
@@ -60,7 +74,7 @@ function savePrediction(episode, player, first, second, third){
   lsSet(KEY_PREDICTIONS, arr);
 }
 
-// latest prediction per episode+player
+// --- latest prediction per episode+player ---
 function getLatestPrediction(episode, player){
   const arr = lsGet(KEY_PREDICTIONS, []);
   for(let i=arr.length-1;i>=0;i--){
@@ -69,7 +83,7 @@ function getLatestPrediction(episode, player){
   return null;
 }
 
-// eliminations (append-only)
+// --- eliminations (append-only) ---
 function setElimination(episode, candidate){
   const arr = lsGet(KEY_ELIMINATIONS, []);
   arr.push({ id: uuidv4(), episode, candidate });
@@ -77,7 +91,7 @@ function setElimination(episode, candidate){
 }
 function getEliminations(){ return lsGet(KEY_ELIMINATIONS, []); }
 
-// active candidates for episode (not fallen before that episode)
+// --- active candidates for episode (not fallen before that episode) ---
 function getActiveCandidatesForEpisode(episode){
   const all = lsGet(KEY_CANDIDATES, []);
   const eliminations = getEliminations();
@@ -85,15 +99,15 @@ function getActiveCandidatesForEpisode(episode){
   return all.filter(c => !fallenBefore.includes(c));
 }
 
-// locks
+// --- locks ---
 function lockEpisode(episode){ const arr = lsGet(KEY_LOCKS, []); if(!arr.includes(episode)){ arr.push(episode); lsSet(KEY_LOCKS, arr); } }
 function isEpisodeLocked(episode){ return lsGet(KEY_LOCKS, []).includes(episode); }
 
-// final Mol
+// --- final Mol ---
 function setFinalMol(candidate, episode){ const obj = { candidate, episode }; lsSet(KEY_FINAL, obj); return obj; }
 function getFinalMol(){ return lsGet(KEY_FINAL, null); }
 
-// admin password (SHA-256)
+// --- admin password helpers (uses subtle crypto) ---
 async function hashStringSHA256(str){
   const enc = new TextEncoder().encode(str);
   const hash = await crypto.subtle.digest('SHA-256', enc);
@@ -111,21 +125,17 @@ async function checkAdminPassword(plain){
   const h = await hashStringSHA256(plain);
   return h === stored;
 }
-(async function ensureDefaultAdmin(){
-  if(!localStorage.getItem(KEY_ADMIN_HASH)){
-    await setAdminPassword('christopheisdemol');
-  }
-})();
 
-// routing & init
+// --- routing & render ---
 window.addEventListener('hashchange', handleHash);
 document.addEventListener('DOMContentLoaded', () => { renderEpisodeNav(); handleHash(); });
 
-// render episode nav (E3..E7)
+// render episode navigation links (E3..E7)
 function renderEpisodeNav(){
   const nav = document.getElementById('episode-nav');
   nav.innerHTML = '';
-  const count = Number(lsGet(KEY_EPISODE_COUNT, DEFAULT_EPISODE_COUNT));
+  // Gebruik altijd de DEFAULT_EPISODE_COUNT (we hebben transient storage gereset)
+  const count = DEFAULT_EPISODE_COUNT;
   for(let i=0;i<count;i++){
     const episode = START_EPISODE + i;
     const a = document.createElement('a');
@@ -136,7 +146,7 @@ function renderEpisodeNav(){
   }
 }
 
-// hash handler
+// main hash handler
 function handleHash(){
   const hash = location.hash || '#overview';
   if(hash.startsWith('#episode-')){
@@ -151,7 +161,7 @@ function handleHash(){
   }
 }
 
-// Overview page
+// --- Overview page (players + candidates with elimination episode/date) + final selector at bottom ---
 function renderOverview(){
   const main = document.getElementById('main'); main.innerHTML = '';
   const titleCard = el('div','card');
@@ -171,7 +181,7 @@ function renderOverview(){
   playersCard.appendChild(pList);
   main.appendChild(playersCard);
 
-  // Candidates overview + table with status
+  // Candidates overview with elimination episode/date (table)
   const candidates = lsGet(KEY_CANDIDATES, DEFAULT_CANDIDATES);
   const elim = getEliminations();
   const candCard = el('div','card');
@@ -180,7 +190,6 @@ function renderOverview(){
   table.innerHTML = `<thead><tr><th>Kandidaat</th><th>Status</th></tr></thead>`;
   const tbody = document.createElement('tbody');
   candidates.forEach(c => {
-    // find earliest elimination for candidate
     const e = elim.find(x => x.candidate === c);
     const status = e ? `Afgevallen in Aflevering ${e.episode} — ${new Date(episodeToDateISO(e.episode)+'T00:00:00').toLocaleDateString('nl-BE',{day:'numeric',month:'short'})}` : 'Nog actief';
     const tr = document.createElement('tr');
@@ -198,8 +207,7 @@ function renderOverview(){
 
   const select = document.createElement('select'); select.className = 'final-select';
   select.innerHTML = `<option value="">-- kies finale Mol (alleen actieve kandidaten) --</option>`;
-  const count = Number(lsGet(KEY_EPISODE_COUNT, DEFAULT_EPISODE_COUNT));
-  const lastEpisode = START_EPISODE + count - 1;
+  const lastEpisode = START_EPISODE + DEFAULT_EPISODE_COUNT - 1;
   getActiveCandidatesForEpisode(lastEpisode).forEach(c => {
     const o = document.createElement('option'); o.value = c; o.text = c; select.appendChild(o);
   });
@@ -223,11 +231,10 @@ function renderOverview(){
   main.appendChild(note);
 }
 
-// Episode page (players + bottom afvaller & lock)
+// --- Episode page render ---
 function renderEpisodePage(episode){
   const main = document.getElementById('main'); main.innerHTML = '';
-  const count = Number(lsGet(KEY_EPISODE_COUNT, DEFAULT_EPISODE_COUNT));
-  const lastEpisode = START_EPISODE + count - 1;
+  const lastEpisode = START_EPISODE + DEFAULT_EPISODE_COUNT - 1;
   if(episode < START_EPISODE || episode > lastEpisode){ main.innerHTML = `<div class="card"><h2>Aflevering ${episode}</h2><div class="small">Ongeldige aflevering</div></div>`; return; }
 
   const titleCard = el('div','card');
@@ -271,7 +278,7 @@ function renderEpisodePage(episode){
     const historyBtn = wrapper.querySelector('.history-btn');
     if(isEpisodeLocked(episode)){ saveBtn.textContent='Locked'; saveBtn.disabled=true; }
 
-    // AUTOSAVE
+    // --- AUTOSAVE: save on change immediately ---
     [sel1, sel2, sel3].forEach(s => {
       s.onchange = () => {
         if(isEpisodeLocked(episode)) return;
@@ -294,7 +301,7 @@ function renderEpisodePage(episode){
 
   main.appendChild(playersCard);
 
-  // navigation
+  // navigation prev/next
   const navCard = el('div','card');
   const navRow = el('div','row');
   const prev = el('a'); prev.href = `#episode-${Math.max(START_EPISODE,episode-1)}`; prev.textContent='Vorige aflevering';
@@ -303,7 +310,7 @@ function renderEpisodePage(episode){
   navCard.appendChild(navRow);
   main.appendChild(navCard);
 
-  // bottom: afvaller dropdown + lock
+  // Afvaller dropdown and lock placed under everything (bottom of page)
   const bottomCard = el('div','card bottom-elim-card');
   bottomCard.innerHTML = `<h3>Afvaller en lock — ${formatEpisodeLabel(episode)}</h3>`;
   const elimRow = el('div','elim-row');
@@ -323,7 +330,7 @@ function renderEpisodePage(episode){
   elimRow.appendChild(selElim); elimRow.appendChild(btnSetElim);
   bottomCard.appendChild(elimRow);
 
-  // lock
+  // lock button
   const lockRow = el('div','elim-row');
   const lockBtn = document.createElement('button'); lockBtn.className='small-btn'; lockBtn.textContent = isEpisodeLocked(episode)?'Aflevering is gelockt':'Lock aflevering';
   lockBtn.onclick = async () => {
@@ -346,7 +353,7 @@ function renderEpisodePage(episode){
   main.appendChild(bottomCard);
 }
 
-// history modal
+// --- history modal (predictions only) ---
 function showHistoryFor(episode, player){
   const preds = lsGet(KEY_PREDICTIONS, []).filter(p => p.episode===episode && p.player===player);
   const modal = document.createElement('div'); modal.className='modal';
@@ -364,7 +371,7 @@ function showHistoryFor(episode, player){
   document.body.appendChild(modal);
 }
 
-// Admin page
+// --- Admin page ---
 function renderAdminPage(){
   const main = document.getElementById('main'); main.innerHTML = '';
   const card = el('div','card');
@@ -381,7 +388,7 @@ function renderAdminPage(){
   card.appendChild(passRow);
   main.appendChild(card);
 
-  // final score preview
+  // final score calculation preview (if final set)
   const final = getFinalMol();
   const scoreCard = el('div','card'); scoreCard.innerHTML = `<h3>Eindscore</h3>`;
   if(!final){ scoreCard.innerHTML += `<div class="small">Finale nog niet ingesteld — zet finale via Overzicht (onderaan)</div>`; }
@@ -396,7 +403,7 @@ function renderAdminPage(){
   main.appendChild(scoreCard);
 }
 
-// Scores page
+// --- Scores page ---
 function renderScoresPage(){
   const main = document.getElementById('main'); main.innerHTML = '';
   const final = getFinalMol();
@@ -411,10 +418,9 @@ function renderScoresPage(){
   const scores = calculateFinalScores(final.candidate);
   card.innerHTML += `<div class="small">Finale Mol: <strong>${final.candidate}</strong> (Aflevering ${final.episode})</div>`;
 
-  // breakdown per episode
+  // table with breakdown per player per episode
   const table = document.createElement('table'); table.className='table';
-  const count = Number(lsGet(KEY_EPISODE_COUNT, DEFAULT_EPISODE_COUNT));
-  const lastEpisode = START_EPISODE + count - 1;
+  const lastEpisode = START_EPISODE + DEFAULT_EPISODE_COUNT - 1;
   let thead = `<thead><tr><th>Speler</th>`;
   for(let e=START_EPISODE; e<=lastEpisode; e++) thead += `<th>E${e}</th>`;
   thead += `<th>Totaal</th></tr></thead>`;
@@ -456,7 +462,7 @@ function renderScoresPage(){
   main.appendChild(rankCard);
 }
 
-// score calculation
+// --- score calculation ---
 function calculateFinalScores(finalMol){
   const preds = lsGet(KEY_PREDICTIONS, []);
   const players = lsGet(KEY_PLAYERS, DEFAULT_PLAYERS);
@@ -474,10 +480,10 @@ function calculateFinalScores(finalMol){
   return arr;
 }
 
-// DOM helper
+// --- small DOM helper ---
 function el(tag, cls){ const d = document.createElement(tag); if(cls) d.className = cls; return d; }
 
-// expose for debugging
+// --- expose some functions for console debugging (optional) ---
 window._mol = {
   lsGet, lsSet, savePrediction, getLatestPrediction, setElimination, getEliminations, getActiveCandidatesForEpisode, lockEpisode, isEpisodeLocked, setFinalMol, getFinalMol, calculateFinalScores, renderEpisodePage
 };
