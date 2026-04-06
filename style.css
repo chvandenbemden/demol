@@ -1,3 +1,4 @@
+/* style.css */
 :root{
   --bg:#0b0b0b; --card:#121212; --accent:#00c875; --muted:#9aa0a6; --danger:#ff5c5c; --glass: rgba(255,255,255,0.03);
 }
@@ -46,3 +47,43 @@ select{flex:1; padding:0.35rem 0.5rem; background:#000; color:inherit; border-ra
 .modal{position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.6)}
 .modal .card{max-width:720px; width:100%}
 .badge{display:inline-block; padding:0.2rem 0.45rem; border-radius:999px; background:rgba(255,255,255,0.03); color:var(--muted); font-size:0.8rem}
+
+/* Prominent final selector on overview */
+.final-select-wrapper{
+  margin-top:1.2rem;
+  padding:1rem;
+  border-radius:10px;
+  background: linear-gradient(90deg, rgba(0,200,117,0.06), rgba(0,200,117,0.02));
+  display:flex;
+  gap:1rem;
+  align-items:center;
+  justify-content:space-between;
+}
+.final-select-label{
+  font-size:1.05rem;
+  font-weight:700;
+  color:#001;
+  background:var(--accent);
+  padding:0.45rem 0.7rem;
+  border-radius:8px;
+}
+.final-select{
+  flex:1;
+  margin-left:1rem;
+  padding:0.6rem 0.8rem;
+  font-size:1.05rem;
+  border-radius:8px;
+  border:1px solid rgba(0,0,0,0.1);
+  background:#fff;
+  color:#001;
+}
+.final-btn{
+  background:var(--danger);
+  color:#fff;
+  border:none;
+  padding:0.6rem 0.9rem;
+  border-radius:8px;
+  font-weight:700;
+  cursor:pointer;
+}
+.final-note{font-size:0.95rem; color:var(--muted); margin-top:0.6rem}
