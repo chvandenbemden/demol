@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>De Mol — Voorspellingen</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>De Mol — Voorspellingen</h1>
+    <nav id="top-nav">
+      <a href="#overview" class="nav-link">Overzicht</a>
+      <span id="week-nav" class="week-nav"></span>
+      <a href="#admin" class="nav-link">Admin</a>
+    </nav>
+  </header>
+
+  <main id="main" class="main-content">
+    <!-- content wordt door JS gerenderd -->
+  </main>
+
+  <footer class="app-footer">
+    <small>Lokale demo — audit log in localStorage (append‑only)</small>
+  </footer>
+
+  <template id="player-card-template">
+    <div class="player-card">
+      <h3 class="player-name"></h3>
+      <div class="select-row"><label>1e</label><select class="sel-first"></select></div>
+      <div class="select-row"><label>2e</label><select class="sel-second"></select></div>
+      <div class="select-row"><label>3e</label><select class="sel-third"></select></div>
+      <div class="player-info"></div>
+      <div class="player-actions">
+        <button class="save-btn">Opslaan</button>
+        <button class="history-btn">Bekijk history</button>
+      </div>
+    </div>
+  </template>
+
+  <script src="script.js"></script>
+</body>
+</html>
